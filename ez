@@ -1,0 +1,179 @@
+--[[
+	Spawned 모델을 내 앞 5스터드 지점으로 모은다.
+	FlySpeed = 60, 0.05초마다 이동
+]]
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+
+local INTERVAL = 0.05
+local BACK_STUDS = 5
+local FLY_SPEED = 60
+local GUI_NAME = "KoNpcFly"
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+local old = playerGui:FindFirstChild(GUI_NAME)
+if old then
+	old:Destroy()
+end
+
+local enabled = false
+local alive = true
+
+local function getSpawned(): Folder?
+	local npc = workspace:FindFirstChild("Npc")
+	local spawned = npc and npc:FindFirstChild("Spawned")
+	if spawned and spawned:IsA("Folder") then
+		return spawned
+	end
+	return nil
+end
+
+local function frontPoint(): Vector3?
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not root or not root:IsA("BasePart") then
+		return nil
+	end
+	local look = root.CFrame.LookVector
+	local flat = Vector3.new(look.X, 0, look.Z)
+	if flat.Magnitude < 0.001 then
+		return nil
+	end
+	return root.Position + flat.Unit * BACK_STUDS
+end
+
+local function flyModel(model: Model, goal: Vector3)
+	local pivot = model:GetPivot()
+	local offset = goal - pivot.Position
+	local distance = offset.Magnitude
+	local step = FLY_SPEED * INTERVAL
+	local pos = if distance <= step or distance < 0.05 then goal else pivot.Position + offset.Unit * step
+	model:PivotTo(CFrame.new(pos) * pivot.Rotation)
+	local velocity = if distance < 0.05 then Vector3.zero else offset.Unit * FLY_SPEED
+	for _, inst in model:GetDescendants() do
+		if inst:IsA("BasePart") then
+			inst.AssemblyLinearVelocity = velocity
+			inst.AssemblyAngularVelocity = Vector3.zero
+		end
+	end
+end
+
+local function flyAll()
+	local goal = frontPoint()
+	local spawned = getSpawned()
+	if not goal or not spawned then
+		return
+	end
+	for _, child in spawned:GetChildren() do
+		if child:IsA("Model") then
+			flyModel(child, goal)
+		end
+	end
+end
+
+task.spawn(function()
+	while alive do
+		if enabled then
+			flyAll()
+		end
+		task.wait(INTERVAL)
+	end
+end)
+
+local gui = Instance.new("ScreenGui")
+gui.Name = GUI_NAME
+gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.Parent = playerGui
+
+local frame = Instance.new("Frame")
+frame.Name = "Panel"
+frame.Size = UDim2.fromOffset(180, 64)
+frame.Position = UDim2.fromOffset(24, 24)
+frame.BackgroundColor3 = Color3.fromRGB(18, 18, 20)
+frame.BorderSizePixel = 0
+frame.Parent = gui
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 8)
+corner.Parent = frame
+
+local title = Instance.new("TextLabel")
+title.BackgroundTransparency = 1
+title.Size = UDim2.new(1, -12, 0, 22)
+title.Position = UDim2.fromOffset(8, 4)
+title.Font = Enum.Font.GothamMedium
+title.TextSize = 13
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.TextColor3 = Color3.fromRGB(236, 236, 240)
+title.Text = "NPC Fly"
+title.Parent = frame
+
+local toggle = Instance.new("TextButton")
+toggle.Name = "Toggle"
+toggle.Size = UDim2.new(1, -16, 0, 28)
+toggle.Position = UDim2.fromOffset(8, 28)
+toggle.BackgroundColor3 = Color3.fromRGB(48, 48, 54)
+toggle.BorderSizePixel = 0
+toggle.Font = Enum.Font.GothamBold
+toggle.TextSize = 13
+toggle.TextColor3 = Color3.fromRGB(236, 236, 240)
+toggle.Text = "OFF"
+toggle.AutoButtonColor = false
+toggle.Parent = frame
+
+local toggleCorner = Instance.new("UICorner")
+toggleCorner.CornerRadius = UDim.new(0, 6)
+toggleCorner.Parent = toggle
+
+local function paint()
+	if enabled then
+		toggle.Text = "ON"
+		toggle.BackgroundColor3 = Color3.fromRGB(52, 168, 98)
+	else
+		toggle.Text = "OFF"
+		toggle.BackgroundColor3 = Color3.fromRGB(48, 48, 54)
+	end
+end
+
+toggle.MouseButton1Click:Connect(function()
+	enabled = not enabled
+	paint()
+end)
+
+local dragging = false
+local dragStart = Vector2.zero
+local startPos = frame.Position
+
+title.InputBegan:Connect(function(input)
+	if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then
+		return
+	end
+	dragging = true
+	dragStart = Vector2.new(input.Position.X, input.Position.Y)
+	startPos = frame.Position
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if not dragging then
+		return
+	end
+	if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then
+		return
+	end
+	local delta = Vector2.new(input.Position.X, input.Position.Y) - dragStart
+	frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		dragging = false
+	end
+end)
+
+gui.Destroying:Connect(function()
+	alive = false
+end)
