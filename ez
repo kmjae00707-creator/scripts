@@ -7,7 +7,8 @@ local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 
 local INTERVAL = 0.05
-local CLICK_INTERVAL = 0.1
+local CLICK_MIN = 1
+local CLICK_MAX = 2
 local CLICK_RANGE = 30
 local BACK_STUDS = 5
 local FLY_SPEED = 60
@@ -24,6 +25,7 @@ end
 local enabled = false
 local clickEnabled = false
 local alive = true
+local lockedClick: ClickDetector? = nil
 
 local function getSpawned(): Folder?
 	local npc = workspace:FindFirstChild("Npc")
@@ -86,12 +88,15 @@ local function playerPosition(): Vector3?
 	return nil
 end
 
-local function clickNearby()
+local function clickAlive(detector: ClickDetector): boolean
+	return detector.Parent ~= nil and detector:IsDescendantOf(workspace)
+end
+
+local function findClick(): ClickDetector?
 	local origin = playerPosition()
-	if not origin or typeof(fireclickdetector) ~= "function" then
-		return
+	if not origin then
+		return nil
 	end
-	local fired: { [ClickDetector]: boolean } = {}
 	local character = player.Character
 	for _, inst in workspace:GetDescendants() do
 		if not inst:IsA("Model") then
@@ -104,11 +109,26 @@ local function clickNearby()
 			continue
 		end
 		for _, child in inst:GetDescendants() do
-			if child:IsA("ClickDetector") and not fired[child] then
-				fired[child] = true
-				pcall(fireclickdetector, child)
+			if child:IsA("ClickDetector") then
+				return child
 			end
 		end
+	end
+	return nil
+end
+
+local function clickLocked()
+	if typeof(fireclickdetector) ~= "function" then
+		return
+	end
+	if lockedClick and not clickAlive(lockedClick) then
+		lockedClick = nil
+	end
+	if not lockedClick then
+		lockedClick = findClick()
+	end
+	if lockedClick then
+		pcall(fireclickdetector, lockedClick)
 	end
 end
 
@@ -124,9 +144,11 @@ end)
 task.spawn(function()
 	while alive do
 		if clickEnabled then
-			clickNearby()
+			clickLocked()
+		else
+			lockedClick = nil
 		end
-		task.wait(CLICK_INTERVAL)
+		task.wait(CLICK_MIN + math.random() * (CLICK_MAX - CLICK_MIN))
 	end
 end)
 
