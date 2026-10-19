@@ -7,6 +7,8 @@ local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 
 local INTERVAL = 0.05
+local CLICK_INTERVAL = 0.1
+local CLICK_RANGE = 30
 local BACK_STUDS = 5
 local FLY_SPEED = 60
 local GUI_NAME = "KoNpcFly"
@@ -20,6 +22,7 @@ if old then
 end
 
 local enabled = false
+local clickEnabled = false
 local alive = true
 
 local function getSpawned(): Folder?
@@ -74,12 +77,56 @@ local function flyAll()
 	end
 end
 
+local function playerPosition(): Vector3?
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if root and root:IsA("BasePart") then
+		return root.Position
+	end
+	return nil
+end
+
+local function clickNearby()
+	local origin = playerPosition()
+	if not origin or typeof(fireclickdetector) ~= "function" then
+		return
+	end
+	local fired: { [ClickDetector]: boolean } = {}
+	local character = player.Character
+	for _, inst in workspace:GetDescendants() do
+		if not inst:IsA("Model") then
+			continue
+		end
+		if character and inst:IsDescendantOf(character) then
+			continue
+		end
+		if (inst:GetPivot().Position - origin).Magnitude > CLICK_RANGE then
+			continue
+		end
+		for _, child in inst:GetDescendants() do
+			if child:IsA("ClickDetector") and not fired[child] then
+				fired[child] = true
+				pcall(fireclickdetector, child)
+			end
+		end
+	end
+end
+
 task.spawn(function()
 	while alive do
 		if enabled then
 			flyAll()
 		end
 		task.wait(INTERVAL)
+	end
+end)
+
+task.spawn(function()
+	while alive do
+		if clickEnabled then
+			clickNearby()
+		end
+		task.wait(CLICK_INTERVAL)
 	end
 end)
 
@@ -91,7 +138,7 @@ gui.Parent = playerGui
 
 local frame = Instance.new("Frame")
 frame.Name = "Panel"
-frame.Size = UDim2.fromOffset(180, 64)
+frame.Size = UDim2.fromOffset(180, 100)
 frame.Position = UDim2.fromOffset(24, 24)
 frame.BackgroundColor3 = Color3.fromRGB(18, 18, 20)
 frame.BorderSizePixel = 0
@@ -142,6 +189,38 @@ end
 toggle.MouseButton1Click:Connect(function()
 	enabled = not enabled
 	paint()
+end)
+
+local clickToggle = Instance.new("TextButton")
+clickToggle.Name = "ClickToggle"
+clickToggle.Size = UDim2.new(1, -16, 0, 28)
+clickToggle.Position = UDim2.fromOffset(8, 62)
+clickToggle.BackgroundColor3 = Color3.fromRGB(48, 48, 54)
+clickToggle.BorderSizePixel = 0
+clickToggle.Font = Enum.Font.GothamBold
+clickToggle.TextSize = 13
+clickToggle.TextColor3 = Color3.fromRGB(236, 236, 240)
+clickToggle.Text = "CLICK OFF"
+clickToggle.AutoButtonColor = false
+clickToggle.Parent = frame
+
+local clickCorner = Instance.new("UICorner")
+clickCorner.CornerRadius = UDim.new(0, 6)
+clickCorner.Parent = clickToggle
+
+local function paintClick()
+	if clickEnabled then
+		clickToggle.Text = "CLICK ON"
+		clickToggle.BackgroundColor3 = Color3.fromRGB(70, 130, 220)
+	else
+		clickToggle.Text = "CLICK OFF"
+		clickToggle.BackgroundColor3 = Color3.fromRGB(48, 48, 54)
+	end
+end
+
+clickToggle.MouseButton1Click:Connect(function()
+	clickEnabled = not clickEnabled
+	paintClick()
 end)
 
 local dragging = false
